@@ -1,33 +1,62 @@
-````markdown
-# TextScanner Microservices
+### Документация
 
-Система для асинхронного анализа студенческих отчётов на плагиат и подсчёта текста.
+#### Краткое описание архитектуры системы
+- **API Gateway**  
+  Отвечает за маршрутизацию запросов между клиентами и микросервисами.
+- **File Storing Service**  
+  Принимает на вход `.txt` файлы, сохраняет их в хранилище и возвращает `file_id`.
+- **File Analysis Service**  
+  Принимает `file_id`, ставит задачу анализатора в очередь (Celery + Redis), сохраняет результаты в БД и возвращает статистику или информацию о дубликате.
 
-Архитектура
+#### Спецификация API
 
-             ┌───────────────┐
-             │   API Gateway │
-             └───────┬───────┘
-                     │
-         ┌───────────┴───────────┐
-         │                       │
-┌────────▼────────┐     ┌────────▼──────────┐
-│ File Storing    │     │ File Analysis     │
-│ Service         │     │ Service           │
-│ (FastAPI 8000)  │     │ (FastAPI 8001)    │
-└────────┬────────┘     └────────┬──────────┘
-         │                       │
-     Postgres                Postgres
-         │                       │
-         │                       │
-         │        ┌──────────────▼──────────┐
-         │        │  Celery Worker (Redis)  │
-         │        └─────────────────────────┘
-         │
-         ▼
-   Файловое хранилище (MinIO/FS)
+1. **POST /upload** (File Storing Service)  
+   - **Параметры**: `file` (multipart/form-data, `.txt`)  
+   - **Ответ**:
+     ```json
+     { "id": <int>, "message": "<string>" }
+     ```
 
-API Gateway — проксирует запросы к другим микросервисам.
-File Storing Service — хранит загруженные `.txt` (PostgreSQL + файловая система).
-File Analysis Service — асинхронно запускает анализ через Celery, хранит результаты (PostgreSQL).
-Celery Worker — бот обрабатывает задачи анализа, общается с Redis.
+2. **GET /files/{file_id}** (File Storing Service)  
+   - **Параметры**: `file_id` (path)  
+   - **Ответ**: бинарный поток файла (`application/octet-stream`)
+
+3. **POST /analyze/{file_id}** (File Analysis Service)  
+   - **Параметры**: `file_id` (path)  
+   - **Ответ**:
+     ```json
+     { "task_id": "<uuid>", "status": "PENDING" }
+     ```
+
+4. **GET /tasks/{task_id}** (File Analysis Service)  
+   - **Параметры**: `task_id` (path)  
+   - **Ответ** при успешном анализе:
+     ```json
+     {
+       "task_id": "<uuid>",
+       "status": "SUCCESS",
+       "state": "COMPLETED",
+       "result": {
+         "paragraphs": <int>,
+         "words": <int>,
+         "characters": <int>
+       }
+     }
+     ```
+   - **Ответ** при дубликате:
+     ```json
+     {
+       "task_id": "<uuid>",
+       "status": "SUCCESS",
+       "state": "DUPLICATE",
+       "original_file_id": <int>
+     }
+     ```
+   - **Ответ** при ошибке:
+     ```json
+     {
+       "task_id": "<uuid>",
+       "status": "FAILURE",
+       "error": "<string>"
+     }
+     ```
