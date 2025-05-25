@@ -1,5 +1,3 @@
-# file_analysis_service/db.py
-
 import os
 import time
 from sqlalchemy import (
