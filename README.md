@@ -31,4 +31,3 @@
 * **File Storing Service** — хранит загруженные `.txt` (PostgreSQL + файловая система).
 * **File Analysis Service** — асинхронно запускает анализ через Celery, хранит результаты (PostgreSQL).
 * **Celery Worker** — бот обрабатывает задачи анализа, общается с Redis.
----
